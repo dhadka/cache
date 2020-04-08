@@ -13,11 +13,14 @@ interface CacheInput {
     path: string;
     key: string;
     restoreKeys?: string[];
+    failOnRestore?: string;
 }
 
 export function setInputs(input: CacheInput): void {
     setInput(Inputs.Path, input.path);
     setInput(Inputs.Key, input.key);
+    input.failOnRestore &&
+        setInput(Inputs.FailOnRestore, input.failOnRestore);
     input.restoreKeys &&
         setInput(Inputs.RestoreKeys, input.restoreKeys.join("\n"));
 }

@@ -57,6 +57,7 @@ async function run(): Promise<void> {
         const archiveFolder = await utils.createTempDirectory();
         const archivePath = path.join(archiveFolder, CacheFilename);
         core.debug(`Archive Path: ${archivePath}`);
+        core.debug(`Cache Paths: ${cachePaths.join('\n')}`)
 
         await createTar(archiveFolder, cachePaths);
 

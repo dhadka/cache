@@ -126,13 +126,137 @@ export async function getCacheEntry(
     return cacheResult;
 }
 
+export class LoggingStream implements NodeJS.WritableStream {
+    public constructor(stream: NodeJS.WritableStream) {
+        this.stream = stream;
+        this.writable = stream.writable;
+        this.incrementBytes = 0;
+        this.totalBytes = 0;
+        this.lastLog = 0;
+        this.startTime = Date.now();
+
+        core.debug(`${this.startTime} - Starting`);
+    }
+
+    incrementBytes: number;
+    totalBytes: number;
+    stream: NodeJS.WritableStream;
+    writable: boolean;
+    lastLog: number;
+    startTime: number;
+
+    write(buffer: string | Uint8Array, cb?: ((err?: Error | null | undefined) => void) | undefined): boolean;
+    write(str: string, encoding?: string | undefined, cb?: ((err?: Error | null | undefined) => void) | undefined): boolean;
+    write(str: any, encoding?: any, cb?: any) {
+        this.incrementBytes += str.length;
+        this.totalBytes += str.length;
+        const currentTime: number = Date.now();
+        const elapsedTime = currentTime - this.startTime;
+
+        if ((currentTime - this.lastLog) >= 1000) {
+            this.lastLog = currentTime;
+            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
+
+            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
+            this.incrementBytes = 0;
+        }
+
+        return this.stream.write(str, encoding, cb);
+    }
+    end(cb?: (() => void) | undefined): void;
+    end(data: string | Uint8Array, cb?: (() => void) | undefined): void;
+    end(str: string, encoding?: string | undefined, cb?: (() => void) | undefined): void;
+    end(str?: any, encoding?: any, cb?: any) {
+        if (str) {
+            this.incrementBytes += str.length;
+            this.totalBytes += str.length;
+        }
+
+        const currentTime: number = Date.now();
+        const elapsedTime = currentTime - this.startTime;
+
+        if ((currentTime - this.lastLog) >= 0) {
+            this.lastLog = currentTime;
+            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
+
+            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
+            this.incrementBytes = 0;
+        }
+
+        this.stream.end(str, encoding, cb);
+    }
+    addListener(event: string | symbol, listener: (...args: any[]) => void): this {
+        this.stream.addListener(event, listener);
+        return this;
+    }
+    on(event: string | symbol, listener: (...args: any[]) => void): this {
+        this.stream.on(event, listener);
+        return this;
+    }
+    once(event: string | symbol, listener: (...args: any[]) => void): this {
+        this.stream.once(event, listener);
+        return this;
+    }
+    removeListener(event: string | symbol, listener: (...args: any[]) => void): this {
+        this.stream.removeListener(event, listener);
+        return this;
+    }
+    off(event: string | symbol, listener: (...args: any[]) => void): this {
+        this.stream.off(event, listener);
+        return this;
+    }
+    removeAllListeners(event?: string | symbol | undefined): this {
+        this.stream.removeAllListeners(event);
+        return this;
+    }
+    setMaxListeners(n: number): this {
+        this.stream.setMaxListeners(n);
+        return this;
+    }
+    getMaxListeners(): number {
+        return this.stream.getMaxListeners();
+    }
+    listeners(event: string | symbol): Function[] {
+        return this.stream.listeners(event);
+    }
+    rawListeners(event: string | symbol): Function[] {
+        return this.stream.rawListeners(event);
+    }
+    emit(event: string | symbol, ...args: any[]): boolean {
+        return this.stream.emit(event, args);
+    }
+    listenerCount(type: string | symbol): number {
+        return this.stream.listenerCount(type);
+    }
+    prependListener(event: string | symbol, listener: (...args: any[]) => void): this {
+        this.stream.prependListener(event, listener);
+        return this;
+    }
+    prependOnceListener(event: string | symbol, listener: (...args: any[]) => void): this {
+        this.stream.prependOnceListener(event, listener);
+        return this;
+    }
+    eventNames(): (string | symbol)[] {
+        return this.stream.eventNames();
+    }
+
+}
+
 async function pipeResponseToStream(
     response: IHttpClientResponse,
     stream: NodeJS.WritableStream
-): Promise<void> {
+): Promise<number> {
     return new Promise(resolve => {
-        response.message.pipe(stream).on("close", () => {
-            resolve();
+        core.debug("Injecting Logging Stream...");
+        response.message.pipe(new LoggingStream(stream)).on("close", () => {
+            var contentLength = -1;
+            var contentLengthHeader = response.message.headers["content-length"];
+            
+            if (contentLengthHeader) {
+                contentLength = parseInt(contentLengthHeader.toString());
+            }
+
+            resolve(contentLength);
         });
     });
 }
@@ -144,7 +268,20 @@ export async function downloadCache(
     const stream = fs.createWriteStream(archivePath);
     const httpClient = new HttpClient("actions/cache");
     const downloadResponse = await httpClient.get(archiveLocation);
-    await pipeResponseToStream(downloadResponse, stream);
+    const expectedLength = await pipeResponseToStream(downloadResponse, stream);
+
+    if (expectedLength >= 0) {
+        const actualLength = fs.statSync(archivePath).size;
+        core.debug(`Content-Length: ${expectedLength}, Actual Length: ${actualLength}`);
+
+        if (actualLength != expectedLength) {
+            throw new Error(
+                `Incomplete download. Expected file size: ${expectedLength}, actual file size: ${actualLength}`
+            );
+        }
+    } else {
+        core.debug("Unable to validate download, no Content-Length header");
+    }
 }
 
 // Reserve Cache

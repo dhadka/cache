@@ -23,6 +23,8 @@ async function run(): Promise<void> {
         const primaryKey = core.getInput(Inputs.Key, { required: true });
         core.saveState(State.CacheKey, primaryKey);
 
+        const failOnRestore = core.getInput(Inputs.FailOnRestore).toLowerCase() == "true";
+
         const restoreKeys = core
             .getInput(Inputs.RestoreKeys)
             .split("\n")
@@ -104,7 +106,11 @@ async function run(): Promise<void> {
                 `Cache restored from key: ${cacheEntry && cacheEntry.cacheKey}`
             );
         } catch (error) {
-            utils.logWarning(error.message);
+            if (failOnRestore) {
+                core.setFailed(error.message);
+            } else {
+                utils.logWarning(error.message);
+            }
             utils.setCacheHitOutput(false);
         }
     } catch (error) {

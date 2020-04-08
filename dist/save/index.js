@@ -2182,12 +2182,12 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
-const fs = __importStar(__webpack_require__(747));
-const crypto = __importStar(__webpack_require__(417));
 const http_client_1 = __webpack_require__(539);
 const auth_1 = __webpack_require__(226);
-const utils = __importStar(__webpack_require__(443));
+const crypto = __importStar(__webpack_require__(417));
+const fs = __importStar(__webpack_require__(747));
 const constants_1 = __webpack_require__(694);
+const utils = __importStar(__webpack_require__(443));
 const versionSalt = "1.0";
 function isSuccessStatusCode(statusCode) {
     if (!statusCode) {
@@ -2271,11 +2271,111 @@ function getCacheEntry(keys) {
     });
 }
 exports.getCacheEntry = getCacheEntry;
+class LoggingStream {
+    constructor(stream) {
+        this.stream = stream;
+        this.writable = stream.writable;
+        this.incrementBytes = 0;
+        this.totalBytes = 0;
+        this.lastLog = 0;
+        this.startTime = Date.now();
+        core.debug(`${this.startTime} - Starting`);
+    }
+    write(str, encoding, cb) {
+        this.incrementBytes += str.length;
+        this.totalBytes += str.length;
+        const currentTime = Date.now();
+        const elapsedTime = currentTime - this.startTime;
+        if ((currentTime - this.lastLog) >= 1000) {
+            this.lastLog = currentTime;
+            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
+            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
+            this.incrementBytes = 0;
+        }
+        return this.stream.write(str, encoding, cb);
+    }
+    end(str, encoding, cb) {
+        if (str) {
+            this.incrementBytes += str.length;
+            this.totalBytes += str.length;
+        }
+        const currentTime = Date.now();
+        const elapsedTime = currentTime - this.startTime;
+        if ((currentTime - this.lastLog) >= 0) {
+            this.lastLog = currentTime;
+            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
+            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
+            this.incrementBytes = 0;
+        }
+        this.stream.end(str, encoding, cb);
+    }
+    addListener(event, listener) {
+        this.stream.addListener(event, listener);
+        return this;
+    }
+    on(event, listener) {
+        this.stream.on(event, listener);
+        return this;
+    }
+    once(event, listener) {
+        this.stream.once(event, listener);
+        return this;
+    }
+    removeListener(event, listener) {
+        this.stream.removeListener(event, listener);
+        return this;
+    }
+    off(event, listener) {
+        this.stream.off(event, listener);
+        return this;
+    }
+    removeAllListeners(event) {
+        this.stream.removeAllListeners(event);
+        return this;
+    }
+    setMaxListeners(n) {
+        this.stream.setMaxListeners(n);
+        return this;
+    }
+    getMaxListeners() {
+        return this.stream.getMaxListeners();
+    }
+    listeners(event) {
+        return this.stream.listeners(event);
+    }
+    rawListeners(event) {
+        return this.stream.rawListeners(event);
+    }
+    emit(event, ...args) {
+        return this.stream.emit(event, args);
+    }
+    listenerCount(type) {
+        return this.stream.listenerCount(type);
+    }
+    prependListener(event, listener) {
+        this.stream.prependListener(event, listener);
+        return this;
+    }
+    prependOnceListener(event, listener) {
+        this.stream.prependOnceListener(event, listener);
+        return this;
+    }
+    eventNames() {
+        return this.stream.eventNames();
+    }
+}
+exports.LoggingStream = LoggingStream;
 function pipeResponseToStream(response, stream) {
     return __awaiter(this, void 0, void 0, function* () {
         return new Promise(resolve => {
-            response.message.pipe(stream).on("close", () => {
-                resolve();
+            core.debug("Injecting Logging Stream...");
+            response.message.pipe(new LoggingStream(stream)).on("close", () => {
+                var contentLength = -1;
+                var contentLengthHeader = response.message.headers["content-length"];
+                if (contentLengthHeader) {
+                    contentLength = parseInt(contentLengthHeader.toString());
+                }
+                resolve(contentLength);
             });
         });
     });
@@ -2285,7 +2385,17 @@ function downloadCache(archiveLocation, archivePath) {
         const stream = fs.createWriteStream(archivePath);
         const httpClient = new http_client_1.HttpClient("actions/cache");
         const downloadResponse = yield httpClient.get(archiveLocation);
-        yield pipeResponseToStream(downloadResponse, stream);
+        const expectedLength = yield pipeResponseToStream(downloadResponse, stream);
+        if (expectedLength >= 0) {
+            const actualLength = fs.statSync(archivePath).size;
+            core.debug(`Content-Length: ${expectedLength}, Actual Length: ${actualLength}`);
+            if (actualLength != expectedLength) {
+                throw new Error(`Incomplete download. Expected file size: ${expectedLength}, actual file size: ${actualLength}`);
+            }
+        }
+        else {
+            core.debug("Unable to validate download, no Content-Length header");
+        }
     });
 }
 exports.downloadCache = downloadCache;
@@ -3185,8 +3295,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
-const io = __importStar(__webpack_require__(1));
 const glob = __importStar(__webpack_require__(281));
+const io = __importStar(__webpack_require__(1));
 const fs = __importStar(__webpack_require__(747));
 const path = __importStar(__webpack_require__(622));
 const util = __importStar(__webpack_require__(669));
@@ -3704,6 +3814,7 @@ class HttpClient {
         let response;
         while (numTries < maxTries) {
             response = await this.requestRaw(info, data);
+
             // Check if it's an authentication challenge
             if (response && response.message && response.message.statusCode === HttpCodes.Unauthorized) {
                 let authenticationHandler;
@@ -4504,6 +4615,7 @@ function run() {
             const archiveFolder = yield utils.createTempDirectory();
             const archivePath = path.join(archiveFolder, constants_1.CacheFilename);
             core.debug(`Archive Path: ${archivePath}`);
+            core.debug(`Cache Paths: ${cachePaths.join('\n')}`);
             yield tar_1.createTar(archiveFolder, cachePaths);
             const fileSizeLimit = 5 * 1024 * 1024 * 1024; // 5GB per repo limit
             const archiveFileSize = utils.getArchiveFileSize(archivePath);
@@ -4537,6 +4649,7 @@ var Inputs;
     Inputs["Key"] = "key";
     Inputs["Path"] = "path";
     Inputs["RestoreKeys"] = "restore-keys";
+    Inputs["FailOnRestore"] = "fail-on-restore";
 })(Inputs = exports.Inputs || (exports.Inputs = {}));
 var Outputs;
 (function (Outputs) {
@@ -4993,6 +5106,7 @@ function createTar(archiveFolder, sourceDirectories) {
             "-cz",
             "-f",
             constants_1.CacheFilename,
+            "-P",
             "-C",
             workingDirectory,
             "--files-from",
