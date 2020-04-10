@@ -65,7 +65,7 @@ function getRequestOptions(): IRequestOptions {
     const requestOptions: IRequestOptions = {
         headers: {
             Accept: createAcceptHeader("application/json", "6.0-preview.1")
-        }
+        },
     };
 
     return requestOptions;
@@ -126,40 +126,46 @@ export async function getCacheEntry(
     return cacheResult;
 }
 
+function writeLog(stream: LoggingStream) {
+    const currentTime: number = Date.now();
+    const elapsedTime = currentTime - stream.startTime;
+    const downloadSpeed = (stream.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
+
+    core.debug(`${new Date()} - Received ${stream.intervalBytes}, Total: ${stream.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
+    stream.intervalBytes = 0;
+
+    if (!stream.isFinished) {
+        stream.timeoutHandle = setTimeout(writeLog, 1000, stream);
+    }
+}
+
 export class LoggingStream implements NodeJS.WritableStream {
     public constructor(stream: NodeJS.WritableStream) {
         this.stream = stream;
         this.writable = stream.writable;
-        this.incrementBytes = 0;
+        this.intervalBytes = 0;
         this.totalBytes = 0;
-        this.lastLog = 0;
         this.startTime = Date.now();
+        this.isFinished = false;
 
         core.debug(`${this.startTime} - Starting`);
+
+        this.timeoutHandle = setTimeout(writeLog, 1000, this);
     }
 
-    incrementBytes: number;
+    intervalBytes: number;
     totalBytes: number;
     stream: NodeJS.WritableStream;
     writable: boolean;
-    lastLog: number;
     startTime: number;
+    isFinished: boolean;
+    timeoutHandle: number;
 
     write(buffer: string | Uint8Array, cb?: ((err?: Error | null | undefined) => void) | undefined): boolean;
     write(str: string, encoding?: string | undefined, cb?: ((err?: Error | null | undefined) => void) | undefined): boolean;
     write(str: any, encoding?: any, cb?: any) {
-        this.incrementBytes += str.length;
+        this.intervalBytes += str.length;
         this.totalBytes += str.length;
-        const currentTime: number = Date.now();
-        const elapsedTime = currentTime - this.startTime;
-
-        if ((currentTime - this.lastLog) >= 1000) {
-            this.lastLog = currentTime;
-            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
-
-            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
-            this.incrementBytes = 0;
-        }
 
         return this.stream.write(str, encoding, cb);
     }
@@ -168,22 +174,15 @@ export class LoggingStream implements NodeJS.WritableStream {
     end(str: string, encoding?: string | undefined, cb?: (() => void) | undefined): void;
     end(str?: any, encoding?: any, cb?: any) {
         if (str) {
-            this.incrementBytes += str.length;
+            this.intervalBytes += str.length;
             this.totalBytes += str.length;
         }
 
-        const currentTime: number = Date.now();
-        const elapsedTime = currentTime - this.startTime;
-
-        if ((currentTime - this.lastLog) >= 0) {
-            this.lastLog = currentTime;
-            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
-
-            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
-            this.incrementBytes = 0;
-        }
-
         this.stream.end(str, encoding, cb);
+
+        this.isFinished = true;
+        clearTimeout(this.timeoutHandle)
+        writeLog(this);
     }
     addListener(event: string | symbol, listener: (...args: any[]) => void): this {
         this.stream.addListener(event, listener);
@@ -247,7 +246,7 @@ async function pipeResponseToStream(
     stream: NodeJS.WritableStream
 ): Promise<number> {
     return new Promise(resolve => {
-        core.debug("Injecting Logging Stream...");
+        core.debug("Injecting Logging Stream (Timer)...");
         response.message.pipe(new LoggingStream(stream)).on("close", () => {
             var contentLength = -1;
             var contentLengthHeader = response.message.headers["content-length"];
@@ -266,7 +265,10 @@ export async function downloadCache(
     archivePath: string
 ): Promise<void> {
     const stream = fs.createWriteStream(archivePath);
-    const httpClient = new HttpClient("actions/cache");
+    const requestOptions: IRequestOptions = {
+        socketTimeout: 5000
+    };
+    const httpClient = new HttpClient("actions/cache", undefined, requestOptions);
     const downloadResponse = await httpClient.get(archiveLocation);
     const expectedLength = await pipeResponseToStream(downloadResponse, stream);
 

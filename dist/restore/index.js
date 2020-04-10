@@ -2225,7 +2225,7 @@ function getRequestOptions() {
     const requestOptions = {
         headers: {
             Accept: createAcceptHeader("application/json", "6.0-preview.1")
-        }
+        },
     };
     return requestOptions;
 }
@@ -2271,43 +2271,41 @@ function getCacheEntry(keys) {
     });
 }
 exports.getCacheEntry = getCacheEntry;
+function writeLog(stream) {
+    const currentTime = Date.now();
+    const elapsedTime = currentTime - stream.startTime;
+    const downloadSpeed = (stream.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
+    core.debug(`${new Date()} - Received ${stream.intervalBytes}, Total: ${stream.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
+    stream.intervalBytes = 0;
+    if (!stream.isFinished) {
+        stream.timeoutHandle = setTimeout(writeLog, 1000, stream);
+    }
+}
 class LoggingStream {
     constructor(stream) {
         this.stream = stream;
         this.writable = stream.writable;
-        this.incrementBytes = 0;
+        this.intervalBytes = 0;
         this.totalBytes = 0;
-        this.lastLog = 0;
         this.startTime = Date.now();
+        this.isFinished = false;
         core.debug(`${this.startTime} - Starting`);
+        this.timeoutHandle = setTimeout(writeLog, 1000, this);
     }
     write(str, encoding, cb) {
-        this.incrementBytes += str.length;
+        this.intervalBytes += str.length;
         this.totalBytes += str.length;
-        const currentTime = Date.now();
-        const elapsedTime = currentTime - this.startTime;
-        if ((currentTime - this.lastLog) >= 1000) {
-            this.lastLog = currentTime;
-            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
-            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
-            this.incrementBytes = 0;
-        }
         return this.stream.write(str, encoding, cb);
     }
     end(str, encoding, cb) {
         if (str) {
-            this.incrementBytes += str.length;
+            this.intervalBytes += str.length;
             this.totalBytes += str.length;
         }
-        const currentTime = Date.now();
-        const elapsedTime = currentTime - this.startTime;
-        if ((currentTime - this.lastLog) >= 0) {
-            this.lastLog = currentTime;
-            const downloadSpeed = (this.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
-            core.debug(`${this.lastLog} - Received ${this.incrementBytes}, Total: ${this.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
-            this.incrementBytes = 0;
-        }
         this.stream.end(str, encoding, cb);
+        this.isFinished = true;
+        clearTimeout(this.timeoutHandle);
+        writeLog(this);
     }
     addListener(event, listener) {
         this.stream.addListener(event, listener);
@@ -2368,7 +2366,7 @@ exports.LoggingStream = LoggingStream;
 function pipeResponseToStream(response, stream) {
     return __awaiter(this, void 0, void 0, function* () {
         return new Promise(resolve => {
-            core.debug("Injecting Logging Stream...");
+            core.debug("Injecting Logging Stream (Timer)...");
             response.message.pipe(new LoggingStream(stream)).on("close", () => {
                 var contentLength = -1;
                 var contentLengthHeader = response.message.headers["content-length"];
@@ -2383,7 +2381,10 @@ function pipeResponseToStream(response, stream) {
 function downloadCache(archiveLocation, archivePath) {
     return __awaiter(this, void 0, void 0, function* () {
         const stream = fs.createWriteStream(archivePath);
-        const httpClient = new http_client_1.HttpClient("actions/cache");
+        const requestOptions = {
+            socketTimeout: 5000
+        };
+        const httpClient = new http_client_1.HttpClient("actions/cache", undefined, requestOptions);
         const downloadResponse = yield httpClient.get(archiveLocation);
         const expectedLength = yield pipeResponseToStream(downloadResponse, stream);
         if (expectedLength >= 0) {
