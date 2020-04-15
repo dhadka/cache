@@ -134,14 +134,22 @@ function writeLog(stream: LoggingStream) {
     core.debug(`${new Date()} - Received ${stream.intervalBytes}, Total: ${stream.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
     stream.intervalBytes = 0;
 
+    //if (elapsedTime > 90000 || (elapsedTime > 5000 && downloadSpeed < 0.5)) {
+    //    core.error(`Aborting download.`);
+    //    stream.response.message.connection.end();
+    //    stream.response.message.socket.end();
+    //    stream.end();
+    //}
+
     if (!stream.isFinished) {
         stream.timeoutHandle = setTimeout(writeLog, 1000, stream);
     }
 }
 
 export class LoggingStream implements NodeJS.WritableStream {
-    public constructor(stream: NodeJS.WritableStream) {
+    public constructor(stream: NodeJS.WritableStream, response: IHttpClientResponse) {
         this.stream = stream;
+        this.response = response;
         this.writable = stream.writable;
         this.intervalBytes = 0;
         this.totalBytes = 0;
@@ -156,6 +164,7 @@ export class LoggingStream implements NodeJS.WritableStream {
     intervalBytes: number;
     totalBytes: number;
     stream: NodeJS.WritableStream;
+    response: IHttpClientResponse;
     writable: boolean;
     startTime: number;
     isFinished: boolean;
@@ -247,7 +256,7 @@ async function pipeResponseToStream(
 ): Promise<number> {
     return new Promise(resolve => {
         core.debug("Injecting Logging Stream (Timer)...");
-        response.message.pipe(new LoggingStream(stream)).on("close", () => {
+        response.message.pipe(new LoggingStream(stream, response)).on("close", () => {
             var contentLength = -1;
             var contentLengthHeader = response.message.headers["content-length"];
             
@@ -265,11 +274,14 @@ export async function downloadCache(
     archivePath: string
 ): Promise<void> {
     const stream = fs.createWriteStream(archivePath);
-    const requestOptions: IRequestOptions = {
-        socketTimeout: 5000
-    };
-    const httpClient = new HttpClient("actions/cache", undefined, requestOptions);
+    const httpClient = new HttpClient("actions/cache");
     const downloadResponse = await httpClient.get(archiveLocation);
+
+    downloadResponse.message.socket.setTimeout(5000, () => {
+        downloadResponse.message.socket.end();
+        core.error("Socket timeout");
+    })
+
     const expectedLength = await pipeResponseToStream(downloadResponse, stream);
 
     if (expectedLength >= 0) {

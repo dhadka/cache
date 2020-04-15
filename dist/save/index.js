@@ -2277,13 +2277,20 @@ function writeLog(stream) {
     const downloadSpeed = (stream.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
     core.debug(`${new Date()} - Received ${stream.intervalBytes}, Total: ${stream.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
     stream.intervalBytes = 0;
+    //if (elapsedTime > 90000 || (elapsedTime > 5000 && downloadSpeed < 0.5)) {
+    //    core.error(`Aborting download.`);
+    //    stream.response.message.connection.end();
+    //    stream.response.message.socket.end();
+    //    stream.end();
+    //}
     if (!stream.isFinished) {
         stream.timeoutHandle = setTimeout(writeLog, 1000, stream);
     }
 }
 class LoggingStream {
-    constructor(stream) {
+    constructor(stream, response) {
         this.stream = stream;
+        this.response = response;
         this.writable = stream.writable;
         this.intervalBytes = 0;
         this.totalBytes = 0;
@@ -2367,7 +2374,7 @@ function pipeResponseToStream(response, stream) {
     return __awaiter(this, void 0, void 0, function* () {
         return new Promise(resolve => {
             core.debug("Injecting Logging Stream (Timer)...");
-            response.message.pipe(new LoggingStream(stream)).on("close", () => {
+            response.message.pipe(new LoggingStream(stream, response)).on("close", () => {
                 var contentLength = -1;
                 var contentLengthHeader = response.message.headers["content-length"];
                 if (contentLengthHeader) {
@@ -2381,11 +2388,12 @@ function pipeResponseToStream(response, stream) {
 function downloadCache(archiveLocation, archivePath) {
     return __awaiter(this, void 0, void 0, function* () {
         const stream = fs.createWriteStream(archivePath);
-        const requestOptions = {
-            socketTimeout: 5000
-        };
-        const httpClient = new http_client_1.HttpClient("actions/cache", undefined, requestOptions);
+        const httpClient = new http_client_1.HttpClient("actions/cache");
         const downloadResponse = yield httpClient.get(archiveLocation);
+        downloadResponse.message.socket.setTimeout(5000, () => {
+            downloadResponse.message.socket.end();
+            core.error("Socket timeout");
+        });
         const expectedLength = yield pipeResponseToStream(downloadResponse, stream);
         if (expectedLength >= 0) {
             const actualLength = fs.statSync(archivePath).size;
@@ -3693,6 +3701,12 @@ class HttpClientResponse {
             let output = Buffer.alloc(0);
             this.message.on('data', (chunk) => {
                 output = Buffer.concat([output, chunk]);
+            });
+            this.message.on('aborted', () => {
+                reject("Request was aborted or closed prematurely");
+            });
+            this.message.on('timeout', (socket) => {
+                reject("Request timed out");
             });
             this.message.on('end', () => {
                 resolve(output.toString());
