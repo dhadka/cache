@@ -2182,12 +2182,12 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
-const fs = __importStar(__webpack_require__(747));
-const crypto = __importStar(__webpack_require__(417));
 const http_client_1 = __webpack_require__(539);
 const auth_1 = __webpack_require__(226);
-const utils = __importStar(__webpack_require__(443));
+const crypto = __importStar(__webpack_require__(417));
+const fs = __importStar(__webpack_require__(747));
 const constants_1 = __webpack_require__(694);
+const utils = __importStar(__webpack_require__(443));
 const versionSalt = "1.0";
 function isSuccessStatusCode(statusCode) {
     if (!statusCode) {
@@ -2264,7 +2264,7 @@ function getCacheEntry(keys) {
         if (!cacheDownloadUrl) {
             throw new Error("Cache not found.");
         }
-        core.setSecret(cacheDownloadUrl);
+        //core.setSecret(cacheDownloadUrl);
         core.debug(`Cache Result:`);
         core.debug(JSON.stringify(cacheResult));
         return cacheResult;
@@ -3185,8 +3185,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
-const io = __importStar(__webpack_require__(1));
 const glob = __importStar(__webpack_require__(281));
+const io = __importStar(__webpack_require__(1));
 const fs = __importStar(__webpack_require__(747));
 const path = __importStar(__webpack_require__(622));
 const util = __importStar(__webpack_require__(669));
@@ -3583,6 +3583,12 @@ class HttpClientResponse {
             this.message.on('data', (chunk) => {
                 output = Buffer.concat([output, chunk]);
             });
+            this.message.on('aborted', () => {
+                reject("Request was aborted or closed prematurely");
+            });
+            this.message.on('timeout', (socket) => {
+                reject("Request timed out");
+            });
             this.message.on('end', () => {
                 resolve(output.toString());
             });
@@ -3704,6 +3710,7 @@ class HttpClient {
         let response;
         while (numTries < maxTries) {
             response = await this.requestRaw(info, data);
+
             // Check if it's an authentication challenge
             if (response && response.message && response.message.statusCode === HttpCodes.Unauthorized) {
                 let authenticationHandler;

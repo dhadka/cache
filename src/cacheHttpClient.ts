@@ -119,7 +119,7 @@ export async function getCacheEntry(
     if (!cacheDownloadUrl) {
         throw new Error("Cache not found.");
     }
-    core.setSecret(cacheDownloadUrl);
+    //core.setSecret(cacheDownloadUrl);
     core.debug(`Cache Result:`);
     core.debug(JSON.stringify(cacheResult));
 
