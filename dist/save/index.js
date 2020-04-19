@@ -2275,7 +2275,7 @@ function writeLog(stream) {
     const currentTime = Date.now();
     const elapsedTime = currentTime - stream.startTime;
     const downloadSpeed = (stream.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
-    core.debug(`${new Date()} - Received ${stream.intervalBytes}, Total: ${stream.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
+    core.debug(`Elapsed Time: ${Math.round(elapsedTime / 1000)} sec, Received: ${stream.intervalBytes}, Total Bytes: ${stream.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
     stream.intervalBytes = 0;
     //if (elapsedTime > 90000 || (elapsedTime > 5000 && downloadSpeed < 0.5)) {
     //    core.error(`Aborting download.`);
@@ -2391,7 +2391,7 @@ function downloadCache(archiveLocation, archivePath) {
         const httpClient = new http_client_1.HttpClient("actions/cache");
         const downloadResponse = yield httpClient.get(archiveLocation);
         downloadResponse.message.socket.setTimeout(5000, () => {
-            downloadResponse.message.socket.end();
+            downloadResponse.message.destroy();
             core.error("Socket timeout");
         });
         const expectedLength = yield pipeResponseToStream(downloadResponse, stream);
