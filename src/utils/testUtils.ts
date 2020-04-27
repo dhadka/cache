@@ -19,8 +19,7 @@ interface CacheInput {
 export function setInputs(input: CacheInput): void {
     setInput(Inputs.Path, input.path);
     setInput(Inputs.Key, input.key);
-    input.failOnRestore &&
-        setInput(Inputs.FailOnRestore, input.failOnRestore);
+    input.failOnRestore && setInput(Inputs.FailOnRestore, input.failOnRestore);
     input.restoreKeys &&
         setInput(Inputs.RestoreKeys, input.restoreKeys.join("\n"));
 }

@@ -2186,6 +2186,8 @@ const http_client_1 = __webpack_require__(539);
 const auth_1 = __webpack_require__(226);
 const crypto = __importStar(__webpack_require__(417));
 const fs = __importStar(__webpack_require__(747));
+const stream = __importStar(__webpack_require__(794));
+const util = __importStar(__webpack_require__(669));
 const constants_1 = __webpack_require__(694);
 const utils = __importStar(__webpack_require__(443));
 const versionSalt = "1.0";
@@ -2225,7 +2227,7 @@ function getRequestOptions() {
     const requestOptions = {
         headers: {
             Accept: createAcceptHeader("application/json", "6.0-preview.1")
-        },
+        }
     };
     return requestOptions;
 }
@@ -2274,7 +2276,7 @@ exports.getCacheEntry = getCacheEntry;
 function writeLog(stream) {
     const currentTime = Date.now();
     const elapsedTime = currentTime - stream.startTime;
-    const downloadSpeed = (stream.totalBytes / (1024 * 1024)) / (elapsedTime / 1000.0);
+    const downloadSpeed = stream.totalBytes / (1024 * 1024) / (elapsedTime / 1000.0);
     core.debug(`Elapsed Time: ${Math.round(elapsedTime / 1000)} sec, Received: ${stream.intervalBytes}, Total Bytes: ${stream.totalBytes}, Speed: ${downloadSpeed.toFixed(2)} MB/s`);
     stream.intervalBytes = 0;
     //if (elapsedTime > 90000 || (elapsedTime > 5000 && downloadSpeed < 0.5)) {
@@ -2370,19 +2372,16 @@ class LoggingStream {
     }
 }
 exports.LoggingStream = LoggingStream;
-function pipeResponseToStream(response, stream) {
+function pipeResponseToStream(response, output) {
     return __awaiter(this, void 0, void 0, function* () {
-        return new Promise(resolve => {
-            core.debug("Injecting Logging Stream (Timer)...");
-            response.message.pipe(new LoggingStream(stream, response)).on("close", () => {
-                var contentLength = -1;
-                var contentLengthHeader = response.message.headers["content-length"];
-                if (contentLengthHeader) {
-                    contentLength = parseInt(contentLengthHeader.toString());
-                }
-                resolve(contentLength);
-            });
-        });
+        const pipeline = util.promisify(stream.pipeline);
+        yield pipeline(response.message, new LoggingStream(output, response));
+        let contentLength = -1;
+        const contentLengthHeader = response.message.headers["content-length"];
+        if (contentLengthHeader) {
+            contentLength = parseInt(contentLengthHeader.toString());
+        }
+        return contentLength;
     });
 }
 function downloadCache(archiveLocation, archivePath) {
@@ -4630,7 +4629,7 @@ function run() {
             const archiveFolder = yield utils.createTempDirectory();
             const archivePath = path.join(archiveFolder, constants_1.CacheFilename);
             core.debug(`Archive Path: ${archivePath}`);
-            core.debug(`Cache Paths: ${cachePaths.join('\n')}`);
+            core.debug(`Cache Paths: ${cachePaths.join("\n")}`);
             yield tar_1.createTar(archiveFolder, cachePaths);
             const fileSizeLimit = 5 * 1024 * 1024 * 1024; // 5GB per repo limit
             const archiveFileSize = utils.getArchiveFileSize(archivePath);
@@ -4738,6 +4737,13 @@ exports.SearchState = SearchState;
 /***/ (function(module) {
 
 module.exports = require("fs");
+
+/***/ }),
+
+/***/ 794:
+/***/ (function(module) {
+
+module.exports = require("stream");
 
 /***/ }),
 

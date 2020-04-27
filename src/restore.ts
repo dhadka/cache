@@ -23,7 +23,8 @@ async function run(): Promise<void> {
         const primaryKey = core.getInput(Inputs.Key, { required: true });
         core.saveState(State.CacheKey, primaryKey);
 
-        const failOnRestore = core.getInput(Inputs.FailOnRestore).toLowerCase() == "true";
+        const failOnRestore =
+            core.getInput(Inputs.FailOnRestore).toLowerCase() == "true";
 
         const restoreKeys = core
             .getInput(Inputs.RestoreKeys)

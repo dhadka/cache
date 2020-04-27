@@ -199,7 +199,6 @@ test("restore with server error should fail if fail-on-restore", async () => {
 
     expect(failedMock).toHaveBeenCalledTimes(1);
     expect(failedMock).toHaveBeenCalledWith("HTTP Error Occurred");
-
 });
 
 test("restore with restore keys and no cache found", async () => {
