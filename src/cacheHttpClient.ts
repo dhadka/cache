@@ -22,6 +22,10 @@ import * as utils from "./utils/actionUtils";
 
 const versionSalt = "1.0";
 
+interface CacheRequestOptions {
+    maxRetries?: number;
+}
+
 function isSuccessStatusCode(statusCode?: number): boolean {
     if (!statusCode) {
         return false;
@@ -63,24 +67,25 @@ function createAcceptHeader(type: string, apiVersion: string): string {
     return `${type};api-version=${apiVersion}`;
 }
 
-function getRequestOptions(): IRequestOptions {
-    const requestOptions: IRequestOptions = {
+function toRequestOptions(
+    requestOptions?: CacheRequestOptions
+): IRequestOptions {
+    return {
         headers: {
             Accept: createAcceptHeader("application/json", "6.0-preview.1")
-        }
+        },
+        maxRetries: requestOptions?.maxRetries
     };
-
-    return requestOptions;
 }
 
-function createHttpClient(): HttpClient {
+function createHttpClient(requestOptions?: CacheRequestOptions): HttpClient {
     const token = process.env["ACTIONS_RUNTIME_TOKEN"] || "";
     const bearerCredentialHandler = new BearerCredentialHandler(token);
 
     return new HttpClient(
         "actions/cache",
         [bearerCredentialHandler],
-        getRequestOptions()
+        toRequestOptions(requestOptions)
     );
 }
 
@@ -100,7 +105,7 @@ export function getCacheVersion(): string {
 export async function getCacheEntry(
     keys: string[]
 ): Promise<ArtifactCacheEntry | null> {
-    const httpClient = createHttpClient();
+    const httpClient = createHttpClient({ maxRetries: 3 });
     const version = getCacheVersion();
     const resource = `cache?keys=${encodeURIComponent(
         keys.join(",")

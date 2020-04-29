@@ -2223,18 +2223,19 @@ function getCacheApiUrl(resource) {
 function createAcceptHeader(type, apiVersion) {
     return `${type};api-version=${apiVersion}`;
 }
-function getRequestOptions() {
-    const requestOptions = {
+function toRequestOptions(requestOptions) {
+    var _a;
+    return {
         headers: {
             Accept: createAcceptHeader("application/json", "6.0-preview.1")
-        }
+        },
+        maxRetries: (_a = requestOptions) === null || _a === void 0 ? void 0 : _a.maxRetries
     };
-    return requestOptions;
 }
-function createHttpClient() {
+function createHttpClient(requestOptions) {
     const token = process.env["ACTIONS_RUNTIME_TOKEN"] || "";
     const bearerCredentialHandler = new auth_1.BearerCredentialHandler(token);
-    return new http_client_1.HttpClient("actions/cache", [bearerCredentialHandler], getRequestOptions());
+    return new http_client_1.HttpClient("actions/cache", [bearerCredentialHandler], toRequestOptions(requestOptions));
 }
 function getCacheVersion() {
     // Add salt to cache version to support breaking changes in cache entry
@@ -2251,7 +2252,7 @@ exports.getCacheVersion = getCacheVersion;
 function getCacheEntry(keys) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
-        const httpClient = createHttpClient();
+        const httpClient = createHttpClient({ maxRetries: 3 });
         const version = getCacheVersion();
         const resource = `cache?keys=${encodeURIComponent(keys.join(","))}&version=${version}`;
         const response = yield httpClient.getJson(getCacheApiUrl(resource));
