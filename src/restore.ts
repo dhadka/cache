@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as path from "path";
+import fs from 'fs';
 
 import * as cacheHttpClient from "./cacheHttpClient";
 import { Events, Inputs, State } from "./constants";
@@ -86,6 +87,11 @@ async function run(): Promise<void> {
                         archiveFileSize / (1024 * 1024)
                     )} MB (${archiveFileSize} B)`
                 );
+
+                if (archiveFileSize < 1000) {
+                    core.debug(`File content:`);
+                    core.debug(fs.readFileSync('foo.txt','utf8'));
+                }
 
                 await extractTar(archivePath);
             } finally {

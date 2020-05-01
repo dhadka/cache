@@ -4682,9 +4682,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
     result["default"] = mod;
     return result;
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
 const path = __importStar(__webpack_require__(622));
+const fs_1 = __importDefault(__webpack_require__(747));
 const cacheHttpClient = __importStar(__webpack_require__(154));
 const constants_1 = __webpack_require__(694);
 const tar_1 = __webpack_require__(943);
@@ -4740,6 +4744,10 @@ function run() {
                     yield cacheHttpClient.downloadCache(cacheEntry.archiveLocation, archivePath);
                     const archiveFileSize = utils.getArchiveFileSize(archivePath);
                     core.info(`Cache Size: ~${Math.round(archiveFileSize / (1024 * 1024))} MB (${archiveFileSize} B)`);
+                    if (archiveFileSize < 1000) {
+                        core.debug(`File content:`);
+                        core.debug(fs_1.default.readFileSync('foo.txt', 'utf8'));
+                    }
                     yield tar_1.extractTar(archivePath);
                 }
                 finally {
