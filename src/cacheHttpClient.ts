@@ -106,9 +106,17 @@ export async function getCacheEntry(
         keys.join(",")
     )}&version=${version}`;
 
-    const response = await httpClient.getJson<ArtifactCacheEntry>(
-        getCacheApiUrl(resource)
-    );
+    let response;
+    try {
+        response = await httpClient.getJson<ArtifactCacheEntry>(
+            getCacheApiUrl(resource)
+        );
+    } catch (error) {
+        core.debug(`Caught ${error}, retrying`);
+        response = await httpClient.getJson<ArtifactCacheEntry>(
+            getCacheApiUrl(resource)
+        );
+    }
     if (response.statusCode === 204) {
         return null;
     }

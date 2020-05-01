@@ -2254,7 +2254,14 @@ function getCacheEntry(keys) {
         const httpClient = createHttpClient();
         const version = getCacheVersion();
         const resource = `cache?keys=${encodeURIComponent(keys.join(","))}&version=${version}`;
-        const response = yield httpClient.getJson(getCacheApiUrl(resource));
+        let response;
+        try {
+            response = yield httpClient.getJson(getCacheApiUrl(resource));
+        }
+        catch (error) {
+            core.debug(`Caught ${error}, retrying`);
+            response = yield httpClient.getJson(getCacheApiUrl(resource));
+        }
         if (response.statusCode === 204) {
             return null;
         }
@@ -3940,6 +3947,7 @@ class HttpClient {
         req.on('error', function (err) {
             // err has statusCode property
             // res should have headers
+            console.log(`Caught error on request: ${err}`);
             handleResult(err, null);
         });
         if (data && typeof (data) === 'string') {

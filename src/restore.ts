@@ -107,6 +107,7 @@ async function run(): Promise<void> {
                 `Cache restored from key: ${cacheEntry && cacheEntry.cacheKey}`
             );
         } catch (error) {
+            core.debug(error);
             if (failOnRestore) {
                 core.setFailed(error.message);
             } else {
