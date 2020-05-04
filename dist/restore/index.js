@@ -2259,7 +2259,7 @@ function getCacheEntry(keys) {
             response = yield httpClient.getJson(getCacheApiUrl(resource));
         }
         catch (error) {
-            core.debug(`Caught ${error}, retrying`);
+            core.error(`Caught error in getCacheEntry: ${error}`);
             response = yield httpClient.getJson(getCacheApiUrl(resource));
         }
         if (response.statusCode === 204) {
@@ -2395,7 +2395,14 @@ function downloadCache(archiveLocation, archivePath) {
     return __awaiter(this, void 0, void 0, function* () {
         const stream = fs.createWriteStream(archivePath);
         const httpClient = new http_client_1.HttpClient("actions/cache");
-        const downloadResponse = yield httpClient.get(archiveLocation);
+        let downloadResponse;
+        try {
+            downloadResponse = yield httpClient.get(archiveLocation);
+        }
+        catch (error) {
+            core.error(`Caught error in downloadCache: ${error}`);
+            downloadResponse = yield httpClient.get(archiveLocation);
+        }
         downloadResponse.message.socket.setTimeout(5000, () => {
             downloadResponse.message.destroy();
             core.error("Socket timeout");
@@ -4745,8 +4752,8 @@ function run() {
                     const archiveFileSize = utils.getArchiveFileSize(archivePath);
                     core.info(`Cache Size: ~${Math.round(archiveFileSize / (1024 * 1024))} MB (${archiveFileSize} B)`);
                     if (archiveFileSize < 1000) {
-                        core.debug(`File content:`);
-                        core.debug(fs_1.default.readFileSync('foo.txt', 'utf8'));
+                        core.error(`File content:`);
+                        core.error(fs_1.default.readFileSync('foo.txt', 'utf8'));
                     }
                     yield tar_1.extractTar(archivePath);
                 }

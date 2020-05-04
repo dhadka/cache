@@ -89,8 +89,8 @@ async function run(): Promise<void> {
                 );
 
                 if (archiveFileSize < 1000) {
-                    core.debug(`File content:`);
-                    core.debug(fs.readFileSync('foo.txt','utf8'));
+                    core.error(`File content:`);
+                    core.error(fs.readFileSync('foo.txt','utf8'));
                 }
 
                 await extractTar(archivePath);

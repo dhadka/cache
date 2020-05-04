@@ -2259,7 +2259,7 @@ function getCacheEntry(keys) {
             response = yield httpClient.getJson(getCacheApiUrl(resource));
         }
         catch (error) {
-            core.debug(`Caught ${error}, retrying`);
+            core.error(`Caught error in getCacheEntry: ${error}`);
             response = yield httpClient.getJson(getCacheApiUrl(resource));
         }
         if (response.statusCode === 204) {
@@ -2395,7 +2395,14 @@ function downloadCache(archiveLocation, archivePath) {
     return __awaiter(this, void 0, void 0, function* () {
         const stream = fs.createWriteStream(archivePath);
         const httpClient = new http_client_1.HttpClient("actions/cache");
-        const downloadResponse = yield httpClient.get(archiveLocation);
+        let downloadResponse;
+        try {
+            downloadResponse = yield httpClient.get(archiveLocation);
+        }
+        catch (error) {
+            core.error(`Caught error in downloadCache: ${error}`);
+            downloadResponse = yield httpClient.get(archiveLocation);
+        }
         downloadResponse.message.socket.setTimeout(5000, () => {
             downloadResponse.message.destroy();
             core.error("Socket timeout");

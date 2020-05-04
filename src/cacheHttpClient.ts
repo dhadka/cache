@@ -112,7 +112,7 @@ export async function getCacheEntry(
             getCacheApiUrl(resource)
         );
     } catch (error) {
-        core.debug(`Caught ${error}, retrying`);
+        core.error(`Caught error in getCacheEntry: ${error}`);
         response = await httpClient.getJson<ArtifactCacheEntry>(
             getCacheApiUrl(resource)
         );
@@ -315,7 +315,14 @@ export async function downloadCache(
 ): Promise<void> {
     const stream = fs.createWriteStream(archivePath);
     const httpClient = new HttpClient("actions/cache");
-    const downloadResponse = await httpClient.get(archiveLocation);
+    let downloadResponse;
+    
+    try {
+        downloadResponse = await httpClient.get(archiveLocation);
+    } catch (error) {
+        core.error(`Caught error in downloadCache: ${error}`);
+        downloadResponse = await httpClient.get(archiveLocation);
+    }
 
     downloadResponse.message.socket.setTimeout(5000, () => {
         downloadResponse.message.destroy();
