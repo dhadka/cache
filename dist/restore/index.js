@@ -2261,6 +2261,8 @@ function getCacheEntry(keys) {
         catch (error) {
             core.error(`Caught error in getCacheEntry: ${error}`);
             response = yield httpClient.getJson(getCacheApiUrl(resource));
+            core.error(`resopnse code: ${response.statusCode}`);
+            throw new Error("Retried");
         }
         if (response.statusCode === 204) {
             return null;
@@ -2402,6 +2404,7 @@ function downloadCache(archiveLocation, archivePath) {
         catch (error) {
             core.error(`Caught error in downloadCache: ${error}`);
             downloadResponse = yield httpClient.get(archiveLocation);
+            throw new Error("Retried");
         }
         downloadResponse.message.socket.setTimeout(5000, () => {
             downloadResponse.message.destroy();

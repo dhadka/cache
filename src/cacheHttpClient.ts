@@ -116,6 +116,8 @@ export async function getCacheEntry(
         response = await httpClient.getJson<ArtifactCacheEntry>(
             getCacheApiUrl(resource)
         );
+        core.error(`resopnse code: ${response.statusCode}`);
+        throw new Error("Retried")
     }
     if (response.statusCode === 204) {
         return null;
@@ -322,6 +324,7 @@ export async function downloadCache(
     } catch (error) {
         core.error(`Caught error in downloadCache: ${error}`);
         downloadResponse = await httpClient.get(archiveLocation);
+        throw new Error("Retried")
     }
 
     downloadResponse.message.socket.setTimeout(5000, () => {
