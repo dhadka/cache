@@ -297,6 +297,7 @@ async function uploadFile(
                         autoClose: false
                     });
 
+                    core.debug(`Starting chunk ${start}-${end}`);
                     await uploadChunk(
                         httpClient,
                         resourceUrl,
@@ -304,6 +305,7 @@ async function uploadFile(
                         start,
                         end
                     );
+                    core.debug(`Finished chunk ${start}-${end}`);
                 }
             })
         );

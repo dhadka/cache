@@ -2385,7 +2385,9 @@ function uploadFile(httpClient, cacheId, archivePath) {
                         end,
                         autoClose: false
                     });
+                    core.debug(`Starting chunk ${start}-${end}`);
                     yield uploadChunk(httpClient, resourceUrl, chunk, start, end);
+                    core.debug(`Finished chunk ${start}-${end}`);
                 }
             })));
         }
@@ -3642,6 +3644,12 @@ class HttpClientResponse {
             this.message.on('data', (chunk) => {
                 output = Buffer.concat([output, chunk]);
             });
+            this.message.on('aborted', () => {
+                reject("Request was aborted or closed prematurely");
+            });
+            this.message.on('timeout', (socket) => {
+                reject("Request timed out");
+            });
             this.message.on('end', () => {
                 resolve(output.toString());
             });
@@ -3763,6 +3771,7 @@ class HttpClient {
         let response;
         while (numTries < maxTries) {
             response = await this.requestRaw(info, data);
+
             // Check if it's an authentication challenge
             if (response && response.message && response.message.statusCode === HttpCodes.Unauthorized) {
                 let authenticationHandler;
@@ -3874,6 +3883,7 @@ class HttpClient {
         req.on('error', function (err) {
             // err has statusCode property
             // res should have headers
+            console.log(`Caught error on request: ${err}`);
             handleResult(err, null);
         });
         if (data && typeof (data) === 'string') {
