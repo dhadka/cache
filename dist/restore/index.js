@@ -4704,7 +4704,7 @@ const constants_1 = __webpack_require__(694);
 const tar_1 = __webpack_require__(943);
 const utils = __importStar(__webpack_require__(443));
 function run() {
-    var _a;
+    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             // Validate inputs, this can cause task failure
@@ -4740,8 +4740,17 @@ function run() {
                 }
             }
             try {
-                const cacheEntry = yield cacheHttpClient.getCacheEntry(keys);
-                if (!((_a = cacheEntry) === null || _a === void 0 ? void 0 : _a.archiveLocation)) {
+                let cacheEntry;
+                for (let i = 0; i < 100; i++) {
+                    try {
+                        cacheEntry = yield cacheHttpClient.getCacheEntry(keys);
+                        core.info(`Query ${i}: ${(_a = cacheEntry) === null || _a === void 0 ? void 0 : _a.archiveLocation}`);
+                    }
+                    catch (e) {
+                        core.info(`Error during query: ${e}`);
+                    }
+                }
+                if (!((_b = cacheEntry) === null || _b === void 0 ? void 0 : _b.archiveLocation)) {
                     core.info(`Cache not found for input keys: ${keys.join(", ")}`);
                     return;
                 }

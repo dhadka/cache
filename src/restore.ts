@@ -59,7 +59,17 @@ async function run(): Promise<void> {
         }
 
         try {
-            const cacheEntry = await cacheHttpClient.getCacheEntry(keys);
+            let cacheEntry;
+            
+            for (let i = 0; i < 100; i++) {
+                try {
+                    cacheEntry = await cacheHttpClient.getCacheEntry(keys);
+                    core.info(`Query ${i}: ${cacheEntry?.archiveLocation}`);
+                } catch (e) {
+                    core.info(`Error during query: ${e}`);
+                }
+            }
+            
             if (!cacheEntry?.archiveLocation) {
                 core.info(`Cache not found for input keys: ${keys.join(", ")}`);
                 return;
