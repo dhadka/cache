@@ -2181,6 +2181,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const os = __importStar(__webpack_require__(87));
 const core = __importStar(__webpack_require__(470));
 const http_client_1 = __webpack_require__(539);
 const auth_1 = __webpack_require__(226);
@@ -2385,9 +2386,11 @@ function uploadFile(httpClient, cacheId, archivePath) {
                         end,
                         autoClose: false
                     });
-                    core.debug(`Starting chunk ${start}-${end}`);
+                    if (os.type() == "Darwin")
+                        core.debug(`Starting chunk ${start}-${end}`);
                     yield uploadChunk(httpClient, resourceUrl, chunk, start, end);
-                    core.debug(`Finished chunk ${start}-${end}`);
+                    if (os.type() == "Darwin")
+                        core.debug(`Finished chunk ${start}-${end}`);
                 }
             })));
         }

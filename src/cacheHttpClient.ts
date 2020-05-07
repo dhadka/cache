@@ -1,3 +1,4 @@
+import * as os from "os";
 import * as core from "@actions/core";
 import { HttpClient, HttpCodes } from "@actions/http-client";
 import { BearerCredentialHandler } from "@actions/http-client/auth";
@@ -297,7 +298,9 @@ async function uploadFile(
                         autoClose: false
                     });
 
-                    core.debug(`Starting chunk ${start}-${end}`);
+                    if (os.type() == "Darwin")
+                        core.debug(`Starting chunk ${start}-${end}`);
+
                     await uploadChunk(
                         httpClient,
                         resourceUrl,
@@ -305,7 +308,9 @@ async function uploadFile(
                         start,
                         end
                     );
-                    core.debug(`Finished chunk ${start}-${end}`);
+
+                    if (os.type() == "Darwin")
+                        core.debug(`Finished chunk ${start}-${end}`);
                 }
             })
         );
