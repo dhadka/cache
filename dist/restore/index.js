@@ -690,7 +690,7 @@ function pipeResponseToStream(response, output) {
         yield pipeline(response.message, output);
     });
 }
-function downloadCacheDirect(archiveLocation, archivePath) {
+function downloadCacheHttpClient(archiveLocation, archivePath) {
     return __awaiter(this, void 0, void 0, function* () {
         const writeStream = fs.createWriteStream(archivePath);
         const httpClient = new http_client_1.HttpClient('actions/cache');
@@ -715,24 +715,23 @@ function downloadCacheDirect(archiveLocation, archivePath) {
         }
     });
 }
-function downloadCacheAzure(archiveLocation, archivePath) {
-    return __awaiter(this, void 0, void 0, function* () {
-        //const client = new BlockBlobClient(archiveLocation)
-        //await client.downloadToFile(archivePath)
-        yield exec_1.exec('azcopy10', ['copy', archiveLocation, archivePath]);
-    });
-}
 function downloadCache(archiveLocation, archivePath) {
+    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const archiveUrl = new url_1.URL(archiveLocation);
-        core.info(`Downloading cache from ${archiveUrl.hostname}`);
-        if (archiveUrl.hostname.endsWith('.blob.core.windows.net')) {
-            core.info('Downloading using Azure client');
-            yield downloadCacheAzure(archiveLocation, archivePath);
+        const useAzCopy = (_a = process.env['USE_AZCOPY']) !== null && _a !== void 0 ? _a : '';
+        // Use AzCopy to download caches hosted on Azure to improve reliability.
+        if (archiveUrl.hostname.endsWith('.blob.core.windows.net') &&
+            useAzCopy === 'true') {
+            const command = yield utils.getAzCopyCommand();
+            if (command) {
+                core.info(`Downloading cache using ${command}...`);
+                yield exec_1.exec(command, ['copy', archiveLocation, archivePath]);
+                return;
+            }
         }
-        else {
-            yield downloadCacheDirect(archiveLocation, archivePath);
-        }
+        // Otherwise, download using the Actions http-client.
+        yield downloadCacheHttpClient(archiveLocation, archivePath);
     });
 }
 exports.downloadCache = downloadCache;
@@ -1442,6 +1441,28 @@ function isGnuTarInstalled() {
     });
 }
 exports.isGnuTarInstalled = isGnuTarInstalled;
+function getAzCopyCommand() {
+    return __awaiter(this, void 0, void 0, function* () {
+        // Always prefer the azcopy10 alias first, which is the correct version on Ubuntu.
+        if ((yield getVersion('azcopy10')).toLowerCase().startsWith('azcopy version')) {
+            return 'azcopy10';
+        }
+        // Fall back to any azcopy that is version 10 or newer.
+        const versionOutput = yield getVersion('azcopy');
+        if (versionOutput.toLowerCase().startsWith('azcopy version')) {
+            const version = versionOutput.substring(15);
+            if (semver.gte(version, '10.0.0')) {
+                return 'azcopy';
+            }
+            else {
+                core.debug(`Found azcopy but version is not supported: ${version}`);
+            }
+        }
+        // Otherwise, azcopy is not available.
+        return undefined;
+    });
+}
+exports.getAzCopyCommand = getAzCopyCommand;
 //# sourceMappingURL=cacheUtils.js.map
 
 /***/ }),
