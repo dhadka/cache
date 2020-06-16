@@ -7787,7 +7787,6 @@ const storage_blob_1 = __webpack_require__(381);
 const buffer = __importStar(__webpack_require__(293));
 const crypto = __importStar(__webpack_require__(417));
 const fs = __importStar(__webpack_require__(747));
-const os = __importStar(__webpack_require__(87));
 const stream = __importStar(__webpack_require__(413));
 const url_1 = __webpack_require__(835);
 const util = __importStar(__webpack_require__(669));
@@ -7956,17 +7955,23 @@ function downloadCacheHttpClient(archiveLocation, archivePath) {
         }
     });
 }
-function downloadCacheStorageSDK(archiveLocation, archivePath) {
-    var _a;
+function downloadCacheStorageSDK(archiveLocation, archivePath, options) {
+    var _a, _b, _c;
     return __awaiter(this, void 0, void 0, function* () {
-        const client = new storage_blob_1.BlockBlobClient(archiveLocation);
+        const client = new storage_blob_1.BlockBlobClient(archiveLocation, undefined, {
+            retryOptions: {
+                // Override the timeout used when downloading each 4 MB chunk. The default
+                // is 2 min / MB, which is way too slow.
+                tryTimeoutInMs: (_a = options === null || options === void 0 ? void 0 : options.timeoutInMs) !== null && _a !== void 0 ? _a : 30000
+            }
+        });
         const properties = yield client.getProperties();
-        const contentLength = (_a = properties.contentLength) !== null && _a !== void 0 ? _a : -1;
+        const contentLength = (_b = properties.contentLength) !== null && _b !== void 0 ? _b : -1;
         if (contentLength < 0) {
             // We should never hit this condition, but just in case fall back to downloading the
             // file as one large stream.
-            core.debug('Unable to determine content length, downloading file as stream...');
-            yield client.downloadToFile(archivePath);
+            core.debug('Unable to determine content length, downloading file with http-client...');
+            yield downloadCacheHttpClient(archiveLocation, archivePath);
         }
         else {
             // Use downloadToBuffer for faster downloads, since internally it splits the
@@ -7974,28 +7979,33 @@ function downloadCacheStorageSDK(archiveLocation, archivePath) {
             // Note that the max buffer length is 1 GB on 32-bit systems and 2 GBs on 64-bit
             // systems. If the content length exceeds this limit, split the download into
             // multiple calls.
-            const maxSegmentSize = buffer.kMaxLength;
+            const maxSegmentSize = buffer.constants.MAX_LENGTH;
             let offset = 0;
             const fd = fs.openSync(archivePath, 'w');
-            while (offset < contentLength) {
-                const segmentSize = Math.min(maxSegmentSize, contentLength - offset);
-                core.debug(`Downloading segment at offset ${offset} with length ${segmentSize}...`);
-                const buffer = yield client.downloadToBuffer(offset, segmentSize, { concurrency: os.cpus().length * 8 });
-                fs.writeFileSync(fd, buffer);
-                core.debug(`Finished segment at offset ${offset}`);
-                offset += segmentSize;
+            try {
+                while (offset < contentLength) {
+                    const segmentSize = Math.min(maxSegmentSize, contentLength - offset);
+                    core.debug(`Downloading segment at offset ${offset} with length ${segmentSize}...`);
+                    const result = yield client.downloadToBuffer(offset, segmentSize, {
+                        concurrency: (_c = options === null || options === void 0 ? void 0 : options.downloadConcurrency) !== null && _c !== void 0 ? _c : 8
+                    });
+                    fs.writeFileSync(fd, result);
+                    core.debug(`Finished segment at offset ${offset}`);
+                    offset += segmentSize;
+                }
             }
-            fs.closeSync(fd);
+            finally {
+                fs.closeSync(fd);
+            }
         }
     });
 }
-function downloadCache(archiveLocation, archivePath) {
+function downloadCache(archiveLocation, archivePath, options) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const archiveUrl = new url_1.URL(archiveLocation);
-        const disableAzureSdk = (_a = process.env['DISABLE_AZURE_SDK']) !== null && _a !== void 0 ? _a : '';
-        if (archiveUrl.hostname.endsWith('.blob.core.windows.net') &&
-            disableAzureSdk !== 'true') {
+        if (((_a = options === null || options === void 0 ? void 0 : options.useAzureSdk) !== null && _a !== void 0 ? _a : true) &&
+            archiveUrl.hostname.endsWith('.blob.core.windows.net')) {
             // Use Azure storage SDK to download caches hosted on Azure to improve speed and reliability.
             yield downloadCacheStorageSDK(archiveLocation, archivePath);
         }
