@@ -2444,6 +2444,37 @@ exports.default = _default;
 
 /***/ }),
 
+/***/ 105:
+/***/ (function(__unusedmodule, exports) {
+
+"use strict";
+
+/*!
+ * Copyright 2019, OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+/** The Type of value. It describes how the data is reported. */
+var ValueType;
+(function (ValueType) {
+    ValueType[ValueType["INT"] = 0] = "INT";
+    ValueType[ValueType["DOUBLE"] = 1] = "DOUBLE";
+})(ValueType = exports.ValueType || (exports.ValueType = {}));
+//# sourceMappingURL=Metric.js.map
+
+/***/ }),
+
 /***/ 109:
 /***/ (function(module) {
 
@@ -7783,39 +7814,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(767));
 const http_client_1 = __webpack_require__(582);
 const auth_1 = __webpack_require__(449);
-const storage_blob_1 = __webpack_require__(381);
-const buffer = __importStar(__webpack_require__(293));
 const crypto = __importStar(__webpack_require__(417));
 const fs = __importStar(__webpack_require__(747));
-const stream = __importStar(__webpack_require__(413));
 const url_1 = __webpack_require__(835);
-const util = __importStar(__webpack_require__(669));
 const utils = __importStar(__webpack_require__(416));
 const constants_1 = __webpack_require__(912);
+const downloadUtils_1 = __webpack_require__(859);
+const options_1 = __webpack_require__(589);
+const requestUtils_1 = __webpack_require__(384);
 const versionSalt = '1.0';
-function isSuccessStatusCode(statusCode) {
-    if (!statusCode) {
-        return false;
-    }
-    return statusCode >= 200 && statusCode < 300;
-}
-function isServerErrorStatusCode(statusCode) {
-    if (!statusCode) {
-        return true;
-    }
-    return statusCode >= 500;
-}
-function isRetryableStatusCode(statusCode) {
-    if (!statusCode) {
-        return false;
-    }
-    const retryableStatusCodes = [
-        http_client_1.HttpCodes.BadGateway,
-        http_client_1.HttpCodes.ServiceUnavailable,
-        http_client_1.HttpCodes.GatewayTimeout
-    ];
-    return retryableStatusCodes.includes(statusCode);
-}
 function getCacheApiUrl(resource) {
     // Ideally we just use ACTIONS_CACHE_URL
     const baseUrl = (process.env['ACTIONS_CACHE_URL'] ||
@@ -7856,60 +7863,16 @@ function getCacheVersion(paths, compressionMethod) {
         .digest('hex');
 }
 exports.getCacheVersion = getCacheVersion;
-function retry(name, method, getStatusCode, maxAttempts = 2) {
-    return __awaiter(this, void 0, void 0, function* () {
-        let response = undefined;
-        let statusCode = undefined;
-        let isRetryable = false;
-        let errorMessage = '';
-        let attempt = 1;
-        while (attempt <= maxAttempts) {
-            try {
-                response = yield method();
-                statusCode = getStatusCode(response);
-                if (!isServerErrorStatusCode(statusCode)) {
-                    return response;
-                }
-                isRetryable = isRetryableStatusCode(statusCode);
-                errorMessage = `Cache service responded with ${statusCode}`;
-            }
-            catch (error) {
-                isRetryable = true;
-                errorMessage = error.message;
-            }
-            core.debug(`${name} - Attempt ${attempt} of ${maxAttempts} failed with error: ${errorMessage}`);
-            if (!isRetryable) {
-                core.debug(`${name} - Error is not retryable`);
-                break;
-            }
-            attempt++;
-        }
-        throw Error(`${name} failed: ${errorMessage}`);
-    });
-}
-exports.retry = retry;
-function retryTypedResponse(name, method, maxAttempts = 2) {
-    return __awaiter(this, void 0, void 0, function* () {
-        return yield retry(name, method, (response) => response.statusCode, maxAttempts);
-    });
-}
-exports.retryTypedResponse = retryTypedResponse;
-function retryHttpClientResponse(name, method, maxAttempts = 2) {
-    return __awaiter(this, void 0, void 0, function* () {
-        return yield retry(name, method, (response) => response.message.statusCode, maxAttempts);
-    });
-}
-exports.retryHttpClientResponse = retryHttpClientResponse;
 function getCacheEntry(keys, paths, options) {
     return __awaiter(this, void 0, void 0, function* () {
         const httpClient = createHttpClient();
         const version = getCacheVersion(paths, options === null || options === void 0 ? void 0 : options.compressionMethod);
         const resource = `cache?keys=${encodeURIComponent(keys.join(','))}&version=${version}`;
-        const response = yield retryTypedResponse('getCacheEntry', () => __awaiter(this, void 0, void 0, function* () { return httpClient.getJson(getCacheApiUrl(resource)); }));
+        const response = yield requestUtils_1.retryTypedResponse('getCacheEntry', () => __awaiter(this, void 0, void 0, function* () { return httpClient.getJson(getCacheApiUrl(resource)); }));
         if (response.statusCode === 204) {
             return null;
         }
-        if (!isSuccessStatusCode(response.statusCode)) {
+        if (!requestUtils_1.isSuccessStatusCode(response.statusCode)) {
             throw new Error(`Cache service responded with ${response.statusCode}`);
         }
         const cacheResult = response.result;
@@ -7924,94 +7887,18 @@ function getCacheEntry(keys, paths, options) {
     });
 }
 exports.getCacheEntry = getCacheEntry;
-function pipeResponseToStream(response, output) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const pipeline = util.promisify(stream.pipeline);
-        yield pipeline(response.message, output);
-    });
-}
-function downloadCacheHttpClient(archiveLocation, archivePath) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const writeStream = fs.createWriteStream(archivePath);
-        const httpClient = new http_client_1.HttpClient('actions/cache');
-        const downloadResponse = yield retryHttpClientResponse('downloadCache', () => __awaiter(this, void 0, void 0, function* () { return httpClient.get(archiveLocation); }));
-        // Abort download if no traffic received over the socket.
-        downloadResponse.message.socket.setTimeout(constants_1.SocketTimeout, () => {
-            downloadResponse.message.destroy();
-            core.debug(`Aborting download, socket timed out after ${constants_1.SocketTimeout} ms`);
-        });
-        yield pipeResponseToStream(downloadResponse, writeStream);
-        // Validate download size.
-        const contentLengthHeader = downloadResponse.message.headers['content-length'];
-        if (contentLengthHeader) {
-            const expectedLength = parseInt(contentLengthHeader);
-            const actualLength = utils.getArchiveFileSizeIsBytes(archivePath);
-            if (actualLength !== expectedLength) {
-                throw new Error(`Incomplete download. Expected file size: ${expectedLength}, actual file size: ${actualLength}`);
-            }
-        }
-        else {
-            core.debug('Unable to validate download, no Content-Length header');
-        }
-    });
-}
-function downloadCacheStorageSDK(archiveLocation, archivePath, options) {
-    var _a, _b, _c;
-    return __awaiter(this, void 0, void 0, function* () {
-        const client = new storage_blob_1.BlockBlobClient(archiveLocation, undefined, {
-            retryOptions: {
-                // Override the timeout used when downloading each 4 MB chunk. The default
-                // is 2 min / MB, which is way too slow.
-                tryTimeoutInMs: (_a = options === null || options === void 0 ? void 0 : options.timeoutInMs) !== null && _a !== void 0 ? _a : 30000
-            }
-        });
-        const properties = yield client.getProperties();
-        const contentLength = (_b = properties.contentLength) !== null && _b !== void 0 ? _b : -1;
-        if (contentLength < 0) {
-            // We should never hit this condition, but just in case fall back to downloading the
-            // file as one large stream.
-            core.debug('Unable to determine content length, downloading file with http-client...');
-            yield downloadCacheHttpClient(archiveLocation, archivePath);
-        }
-        else {
-            // Use downloadToBuffer for faster downloads, since internally it splits the
-            // file into 4 MB chunks which can then be parallelized and retried independently.
-            // Note that the max buffer length is 1 GB on 32-bit systems and 2 GBs on 64-bit
-            // systems. If the content length exceeds this limit, split the download into
-            // multiple calls.
-            const maxSegmentSize = buffer.constants.MAX_LENGTH;
-            let offset = 0;
-            const fd = fs.openSync(archivePath, 'w');
-            try {
-                while (offset < contentLength) {
-                    const segmentSize = Math.min(maxSegmentSize, contentLength - offset);
-                    core.debug(`Downloading segment at offset ${offset} with length ${segmentSize}...`);
-                    const result = yield client.downloadToBuffer(offset, segmentSize, {
-                        concurrency: (_c = options === null || options === void 0 ? void 0 : options.downloadConcurrency) !== null && _c !== void 0 ? _c : 8
-                    });
-                    fs.writeFileSync(fd, result);
-                    core.debug(`Finished segment at offset ${offset}`);
-                    offset += segmentSize;
-                }
-            }
-            finally {
-                fs.closeSync(fd);
-            }
-        }
-    });
-}
 function downloadCache(archiveLocation, archivePath, options) {
-    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const archiveUrl = new url_1.URL(archiveLocation);
-        if (((_a = options === null || options === void 0 ? void 0 : options.useAzureSdk) !== null && _a !== void 0 ? _a : true) &&
+        const downloadOptions = options_1.getDownloadOptions(options);
+        if (downloadOptions.useAzureSdk &&
             archiveUrl.hostname.endsWith('.blob.core.windows.net')) {
             // Use Azure storage SDK to download caches hosted on Azure to improve speed and reliability.
-            yield downloadCacheStorageSDK(archiveLocation, archivePath);
+            yield downloadUtils_1.downloadCacheStorageSDK(archiveLocation, archivePath, downloadOptions);
         }
         else {
             // Otherwise, download using the Actions http-client.
-            yield downloadCacheHttpClient(archiveLocation, archivePath);
+            yield downloadUtils_1.downloadCacheHttpClient(archiveLocation, archivePath);
         }
     });
 }
@@ -8026,7 +7913,7 @@ function reserveCache(key, paths, options) {
             key,
             version
         };
-        const response = yield retryTypedResponse('reserveCache', () => __awaiter(this, void 0, void 0, function* () {
+        const response = yield requestUtils_1.retryTypedResponse('reserveCache', () => __awaiter(this, void 0, void 0, function* () {
             return httpClient.postJson(getCacheApiUrl('caches'), reserveCacheRequest);
         }));
         return (_b = (_a = response === null || response === void 0 ? void 0 : response.result) === null || _a === void 0 ? void 0 : _a.cacheId) !== null && _b !== void 0 ? _b : -1;
@@ -8050,31 +7937,30 @@ function uploadChunk(httpClient, resourceUrl, openStream, start, end) {
             'Content-Type': 'application/octet-stream',
             'Content-Range': getContentRange(start, end)
         };
-        yield retryHttpClientResponse(`uploadChunk (start: ${start}, end: ${end})`, () => __awaiter(this, void 0, void 0, function* () {
+        yield requestUtils_1.retryHttpClientResponse(`uploadChunk (start: ${start}, end: ${end})`, () => __awaiter(this, void 0, void 0, function* () {
             return httpClient.sendStream('PATCH', resourceUrl, openStream(), additionalHeaders);
         }));
     });
 }
 function uploadFile(httpClient, cacheId, archivePath, options) {
-    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         // Upload Chunks
         const fileSize = fs.statSync(archivePath).size;
         const resourceUrl = getCacheApiUrl(`caches/${cacheId.toString()}`);
         const fd = fs.openSync(archivePath, 'r');
-        const concurrency = (_a = options === null || options === void 0 ? void 0 : options.uploadConcurrency) !== null && _a !== void 0 ? _a : 4; // # of HTTP requests in parallel
-        const MAX_CHUNK_SIZE = (_b = options === null || options === void 0 ? void 0 : options.uploadChunkSize) !== null && _b !== void 0 ? _b : 32 * 1024 * 1024; // 32 MB Chunks
-        core.debug(`Concurrency: ${concurrency} and Chunk Size: ${MAX_CHUNK_SIZE}`);
+        const uploadOptions = options_1.getUploadOptions(options);
+        const concurrency = utils.assertDefined('uploadConcurrency', uploadOptions.uploadConcurrency);
+        const maxChunkSize = utils.assertDefined('uploadChunkSize', uploadOptions.uploadChunkSize);
         const parallelUploads = [...new Array(concurrency).keys()];
         core.debug('Awaiting all uploads');
         let offset = 0;
         try {
             yield Promise.all(parallelUploads.map(() => __awaiter(this, void 0, void 0, function* () {
                 while (offset < fileSize) {
-                    const chunkSize = Math.min(fileSize - offset, MAX_CHUNK_SIZE);
+                    const chunkSize = Math.min(fileSize - offset, maxChunkSize);
                     const start = offset;
                     const end = offset + chunkSize - 1;
-                    offset += MAX_CHUNK_SIZE;
+                    offset += maxChunkSize;
                     yield uploadChunk(httpClient, resourceUrl, () => fs
                         .createReadStream(archivePath, {
                         fd,
@@ -8097,7 +7983,7 @@ function uploadFile(httpClient, cacheId, archivePath, options) {
 function commitCache(httpClient, cacheId, filesize) {
     return __awaiter(this, void 0, void 0, function* () {
         const commitCacheRequest = { size: filesize };
-        return yield retryTypedResponse('commitCache', () => __awaiter(this, void 0, void 0, function* () {
+        return yield requestUtils_1.retryTypedResponse('commitCache', () => __awaiter(this, void 0, void 0, function* () {
             return httpClient.postJson(getCacheApiUrl(`caches/${cacheId.toString()}`), commitCacheRequest);
         }));
     });
@@ -8111,7 +7997,7 @@ function saveCache(cacheId, archivePath, options) {
         core.debug('Commiting cache');
         const cacheSize = utils.getArchiveFileSizeIsBytes(archivePath);
         const commitCacheResponse = yield commitCache(httpClient, cacheId, cacheSize);
-        if (!isSuccessStatusCode(commitCacheResponse.statusCode)) {
+        if (!requestUtils_1.isSuccessStatusCode(commitCacheResponse.statusCode)) {
             throw new Error(`Cache service responded with ${commitCacheResponse.statusCode} during commit cache.`);
         }
         core.info('Cache saved successfully');
@@ -28624,6 +28510,104 @@ exports.checkBypass = checkBypass;
 
 /***/ }),
 
+/***/ 384:
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
+
+"use strict";
+
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const core = __importStar(__webpack_require__(767));
+const http_client_1 = __webpack_require__(582);
+function isSuccessStatusCode(statusCode) {
+    if (!statusCode) {
+        return false;
+    }
+    return statusCode >= 200 && statusCode < 300;
+}
+exports.isSuccessStatusCode = isSuccessStatusCode;
+function isServerErrorStatusCode(statusCode) {
+    if (!statusCode) {
+        return true;
+    }
+    return statusCode >= 500;
+}
+exports.isServerErrorStatusCode = isServerErrorStatusCode;
+function isRetryableStatusCode(statusCode) {
+    if (!statusCode) {
+        return false;
+    }
+    const retryableStatusCodes = [
+        http_client_1.HttpCodes.BadGateway,
+        http_client_1.HttpCodes.ServiceUnavailable,
+        http_client_1.HttpCodes.GatewayTimeout
+    ];
+    return retryableStatusCodes.includes(statusCode);
+}
+exports.isRetryableStatusCode = isRetryableStatusCode;
+function retry(name, method, getStatusCode, maxAttempts = 2) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let response = undefined;
+        let statusCode = undefined;
+        let isRetryable = false;
+        let errorMessage = '';
+        let attempt = 1;
+        while (attempt <= maxAttempts) {
+            try {
+                response = yield method();
+                statusCode = getStatusCode(response);
+                if (!isServerErrorStatusCode(statusCode)) {
+                    return response;
+                }
+                isRetryable = isRetryableStatusCode(statusCode);
+                errorMessage = `Cache service responded with ${statusCode}`;
+            }
+            catch (error) {
+                isRetryable = true;
+                errorMessage = error.message;
+            }
+            core.debug(`${name} - Attempt ${attempt} of ${maxAttempts} failed with error: ${errorMessage}`);
+            if (!isRetryable) {
+                core.debug(`${name} - Error is not retryable`);
+                break;
+            }
+            attempt++;
+        }
+        throw Error(`${name} failed: ${errorMessage}`);
+    });
+}
+exports.retry = retry;
+function retryTypedResponse(name, method, maxAttempts = 2) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return yield retry(name, method, (response) => response.statusCode, maxAttempts);
+    });
+}
+exports.retryTypedResponse = retryTypedResponse;
+function retryHttpClientResponse(name, method, maxAttempts = 2) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return yield retry(name, method, (response) => response.message.statusCode, maxAttempts);
+    });
+}
+exports.retryHttpClientResponse = retryHttpClientResponse;
+//# sourceMappingURL=requestUtils.js.map
+
+/***/ }),
+
 /***/ 387:
 /***/ (function(module) {
 
@@ -30865,6 +30849,13 @@ function isGnuTarInstalled() {
     });
 }
 exports.isGnuTarInstalled = isGnuTarInstalled;
+function assertDefined(name, value) {
+    if (value === undefined) {
+        throw Error(`Expected ${name} but value was undefiend`);
+    }
+    return value;
+}
+exports.assertDefined = assertDefined;
 //# sourceMappingURL=cacheUtils.js.map
 
 /***/ }),
@@ -36351,6 +36342,75 @@ exports.HttpClient = HttpClient;
 
 /***/ }),
 
+/***/ 589:
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
+
+"use strict";
+
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const core = __importStar(__webpack_require__(767));
+/**
+ * Returns a copy of the upload options with defaults filled in.
+ *
+ * @param copy the original upload options
+ */
+function getUploadOptions(copy) {
+    const result = {
+        uploadConcurrency: 4,
+        uploadChunkSize: 32 * 1024 * 1024
+    };
+    if (copy) {
+        if (typeof copy.uploadConcurrency === 'number') {
+            result.uploadConcurrency = copy.uploadConcurrency;
+        }
+        if (typeof copy.uploadChunkSize === 'number') {
+            result.uploadChunkSize = copy.uploadChunkSize;
+        }
+    }
+    core.debug(`Upload concurrency: ${result.uploadConcurrency}`);
+    core.debug(`Upload chunk size: ${result.uploadChunkSize}`);
+    return result;
+}
+exports.getUploadOptions = getUploadOptions;
+/**
+ * Returns a copy of the download options with defaults filled in.
+ *
+ * @param copy the original download options
+ */
+function getDownloadOptions(copy) {
+    const result = {
+        useAzureSdk: true,
+        downloadConcurrency: 8,
+        timeoutInMs: 30000
+    };
+    if (copy) {
+        if (typeof copy.useAzureSdk === 'boolean') {
+            result.useAzureSdk = copy.useAzureSdk;
+        }
+        if (typeof copy.downloadConcurrency === 'number') {
+            result.downloadConcurrency = copy.downloadConcurrency;
+        }
+        if (typeof copy.timeoutInMs === 'number') {
+            result.timeoutInMs = copy.timeoutInMs;
+        }
+    }
+    core.debug(`Use Azure SDK: ${result.useAzureSdk}`);
+    core.debug(`Download concurrency: ${result.downloadConcurrency}`);
+    core.debug(`Request timeout (ms): ${result.timeoutInMs}`);
+    return result;
+}
+exports.getDownloadOptions = getDownloadOptions;
+//# sourceMappingURL=options.js.map
+
+/***/ }),
+
 /***/ 590:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -41654,9 +41714,10 @@ function checkKey(key) {
  * @param paths a list of file paths to restore from the cache
  * @param primaryKey an explicit key for restoring the cache
  * @param restoreKeys an optional ordered list of keys to use for restoring the cache if no cache hit occurred for key
+ * @param downloadOptions cache download options
  * @returns string returns the key for the cache hit, otherwise returns undefined
  */
-function restoreCache(paths, primaryKey, restoreKeys) {
+function restoreCache(paths, primaryKey, restoreKeys, options) {
     return __awaiter(this, void 0, void 0, function* () {
         checkPaths(paths);
         restoreKeys = restoreKeys || [];
@@ -41682,7 +41743,7 @@ function restoreCache(paths, primaryKey, restoreKeys) {
         core.debug(`Archive Path: ${archivePath}`);
         try {
             // Download the cache from the cache entry
-            yield cacheHttpClient.downloadCache(cacheEntry.archiveLocation, archivePath);
+            yield cacheHttpClient.downloadCache(cacheEntry.archiveLocation, archivePath, options);
             const archiveFileSize = utils.getArchiveFileSizeIsBytes(archivePath);
             core.info(`Cache Size: ~${Math.round(archiveFileSize / (1024 * 1024))} MB (${archiveFileSize} B)`);
             yield tar_1.extractTar(archivePath, compressionMethod);
@@ -44451,33 +44512,236 @@ class ExecState extends events.EventEmitter {
 /***/ }),
 
 /***/ 859:
-/***/ (function(__unusedmodule, exports) {
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
 
 "use strict";
 
-/*!
- * Copyright 2019, OpenTelemetry Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-/** The Type of value. It describes how the data is reported. */
-var ValueType;
-(function (ValueType) {
-    ValueType[ValueType["INT"] = 0] = "INT";
-    ValueType[ValueType["DOUBLE"] = 1] = "DOUBLE";
-})(ValueType = exports.ValueType || (exports.ValueType = {}));
-//# sourceMappingURL=Metric.js.map
+const core = __importStar(__webpack_require__(767));
+const http_client_1 = __webpack_require__(582);
+const storage_blob_1 = __webpack_require__(381);
+const buffer = __importStar(__webpack_require__(293));
+const fs = __importStar(__webpack_require__(747));
+const stream = __importStar(__webpack_require__(413));
+const util = __importStar(__webpack_require__(669));
+const utils = __importStar(__webpack_require__(416));
+const constants_1 = __webpack_require__(912);
+const requestUtils_1 = __webpack_require__(384);
+/**
+ * Pipes the body of a HTTP response to a stream
+ *
+ * @param response the HTTP response
+ * @param output the writable stream
+ */
+function pipeResponseToStream(response, output) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const pipeline = util.promisify(stream.pipeline);
+        yield pipeline(response.message, output);
+    });
+}
+/**
+ * Class for tracking the download state and displaying stats to the output.
+ */
+class DownloadProgress {
+    constructor(contentLength) {
+        this.contentLength = contentLength;
+        this.segmentIndex = 0;
+        this.segmentSize = 0;
+        this.segmentOffset = 0;
+        this.receivedBytes = 0;
+        this.displayedComplete = false;
+        this.startTime = Date.now();
+    }
+    /**
+     * Progress to the next segment. Only call this method when the previous segment
+     * is complete.
+     *
+     * @param segmentSize the length of the next segment
+     */
+    nextSegment(segmentSize) {
+        this.segmentOffset = this.segmentOffset + this.segmentSize;
+        this.segmentIndex = this.segmentIndex + 1;
+        this.segmentSize = segmentSize;
+        this.receivedBytes = 0;
+        core.debug(`Downloading segment at offset ${this.segmentOffset} with length ${this.segmentSize}...`);
+    }
+    /**
+     * Sets the number of bytes received for the current segment.
+     *
+     * @param receivedBytes the number of bytes received
+     */
+    setReceivedBytes(receivedBytes) {
+        this.receivedBytes = receivedBytes;
+    }
+    /**
+     * Returns the total number of bytes transferred.
+     */
+    getTransferredBytes() {
+        return this.segmentOffset + this.receivedBytes;
+    }
+    /**
+     * Returns true if the download is complete.
+     */
+    isDone() {
+        return this.getTransferredBytes() == this.contentLength;
+    }
+    /**
+     * Prints the current download stats. Once the download completes, this will print one
+     * last line and then stop.
+     */
+    display() {
+        if (this.displayedComplete) {
+            return;
+        }
+        const transferredBytes = this.segmentOffset + this.receivedBytes;
+        const percentage = (100 * transferredBytes / this.contentLength).toFixed(1);
+        const elapsedTime = Date.now() - this.startTime;
+        const downloadSpeed = ((transferredBytes / (1024 * 1024)) / (elapsedTime / 1000)).toFixed(1);
+        core.info(`Received ${transferredBytes} of ${this.contentLength} (${percentage}%), ${downloadSpeed} MBs/sec`);
+        if (this.isDone()) {
+            this.displayedComplete = true;
+        }
+    }
+    /**
+     * Callback used to update the progress.
+     *
+     * @param progress the progress event
+     */
+    onProgressCallback(progress) {
+        this.setReceivedBytes(progress.loadedBytes);
+    }
+    /**
+     * Starts the timer that displays the stats.
+     *
+     * @param delayInMs the delay between each write
+     */
+    startDisplayTimer(delayInMs = 1000) {
+        const displayCallback = () => {
+            this.display();
+            if (!this.isDone()) {
+                this.timeoutHandle = setTimeout(displayCallback, delayInMs);
+            }
+        };
+        this.timeoutHandle = setTimeout(displayCallback, delayInMs);
+    }
+    /**
+     * Stops the timer that displays the stats. As this typically indicates the download
+     * is complete, this will display one last line, unless the last line has already
+     * been written.
+     */
+    stopDisplayTimer() {
+        if (this.timeoutHandle) {
+            clearTimeout(this.timeoutHandle);
+            this.timeoutHandle = undefined;
+        }
+        this.display();
+    }
+}
+/**
+ * Download the cache using the Actions toolkit http-client
+ *
+ * @param archiveLocation the URL for the cache
+ * @param archivePath the local path where the cache is saved
+ */
+function downloadCacheHttpClient(archiveLocation, archivePath) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const writeStream = fs.createWriteStream(archivePath);
+        const httpClient = new http_client_1.HttpClient('actions/cache');
+        const downloadResponse = yield requestUtils_1.retryHttpClientResponse('downloadCache', () => __awaiter(this, void 0, void 0, function* () { return httpClient.get(archiveLocation); }));
+        // Abort download if no traffic received over the socket.
+        downloadResponse.message.socket.setTimeout(constants_1.SocketTimeout, () => {
+            downloadResponse.message.destroy();
+            core.debug(`Aborting download, socket timed out after ${constants_1.SocketTimeout} ms`);
+        });
+        yield pipeResponseToStream(downloadResponse, writeStream);
+        // Validate download size.
+        const contentLengthHeader = downloadResponse.message.headers['content-length'];
+        if (contentLengthHeader) {
+            const expectedLength = parseInt(contentLengthHeader);
+            const actualLength = utils.getArchiveFileSizeIsBytes(archivePath);
+            if (actualLength !== expectedLength) {
+                throw new Error(`Incomplete download. Expected file size: ${expectedLength}, actual file size: ${actualLength}`);
+            }
+        }
+        else {
+            core.debug('Unable to validate download, no Content-Length header');
+        }
+    });
+}
+exports.downloadCacheHttpClient = downloadCacheHttpClient;
+/**
+ * Download the cache using the Azure Storage SDK.  Only call this method if the
+ * URL points to an Azure Storage endpoint.
+ *
+ * @param archiveLocation the URL for the cache
+ * @param archivePath the local path where the cache is saved
+ * @param options the download options with the defaults set
+ */
+function downloadCacheStorageSDK(archiveLocation, archivePath, options) {
+    var _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        const client = new storage_blob_1.BlockBlobClient(archiveLocation, undefined, {
+            retryOptions: {
+                // Override the timeout used when downloading each 4 MB chunk
+                // The default is 2 min / MB, which is way too slow
+                tryTimeoutInMs: options.timeoutInMs
+            }
+        });
+        const properties = yield client.getProperties();
+        const contentLength = (_a = properties.contentLength) !== null && _a !== void 0 ? _a : -1;
+        if (contentLength < 0) {
+            // We should never hit this condition, but just in case fall back to downloading the
+            // file as one large stream
+            core.debug('Unable to determine content length, downloading file with http-client...');
+            yield downloadCacheHttpClient(archiveLocation, archivePath);
+        }
+        else {
+            // Use downloadToBuffer for faster downloads, since internally it splits the
+            // file into 4 MB chunks which can then be parallelized and retried independently
+            //
+            // If the file exceeds the buffer maximum length (~1 GB on 32-bit systems and ~2 GB
+            // on 64-bit systems), split the download into multiple segments
+            const startTime = Date.now();
+            const maxSegmentSize = buffer.constants.MAX_LENGTH;
+            const downloadProgress = new DownloadProgress(contentLength);
+            const fd = fs.openSync(archivePath, 'w');
+            try {
+                downloadProgress.startDisplayTimer();
+                while (!downloadProgress.isDone()) {
+                    const segmentSize = Math.min(maxSegmentSize, contentLength - downloadProgress.segmentOffset);
+                    downloadProgress.nextSegment(segmentSize);
+                    const result = yield client.downloadToBuffer(downloadProgress.segmentOffset, segmentSize, {
+                        concurrency: options.downloadConcurrency,
+                        onProgress: downloadProgress.onProgressCallback.bind(downloadProgress)
+                    });
+                    fs.writeFileSync(fd, result);
+                }
+            }
+            finally {
+                downloadProgress.stopDisplayTimer();
+                fs.closeSync(fd);
+            }
+        }
+    });
+}
+exports.downloadCacheStorageSDK = downloadCacheStorageSDK;
+//# sourceMappingURL=downloadUtils.js.map
 
 /***/ }),
 
@@ -44671,7 +44935,7 @@ __export(__webpack_require__(574));
 __export(__webpack_require__(924));
 __export(__webpack_require__(793));
 __export(__webpack_require__(445));
-__export(__webpack_require__(859));
+__export(__webpack_require__(105));
 __export(__webpack_require__(684));
 __export(__webpack_require__(260));
 __export(__webpack_require__(76));
