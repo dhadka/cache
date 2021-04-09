@@ -3423,7 +3423,7 @@ function getTarPath(args, compressionMethod) {
 function execTar(args, compressionMethod, cwd) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            yield exec_1.exec(`"${yield getTarPath(args, compressionMethod)}"`, args, { cwd });
+            yield exec_1.exec(`sudo "${yield getTarPath(args, compressionMethod)}"`, args, { cwd });
         }
         catch (error) {
             throw new Error(`Tar failed with error: ${error === null || error === void 0 ? void 0 : error.message}`);
@@ -3457,7 +3457,6 @@ function extractTar(archivePath, compressionMethod) {
             '-xf',
             archivePath.replace(new RegExp(`\\${path.sep}`, 'g'), '/'),
             '-P',
-            '--delay-directory-restore',
             '-C',
             workingDirectory.replace(new RegExp(`\\${path.sep}`, 'g'), '/')
         ];
